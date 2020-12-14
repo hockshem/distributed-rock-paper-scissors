@@ -5,11 +5,11 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.Behavior
 import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.ActorContext
-import com.example.GameSessionManager
 import akka.util.Timeout
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
+import GameSessionManager.{GameSessionResponses, GameSessionCommands}
 
 
 object RoundManager {
@@ -73,23 +73,24 @@ object RoundManager {
         selectionMap.head._2.winAgainst(selectionMap.last._2)
     }
 
-    sealed trait RoundManagerCommands
-    sealed trait RoundManagerResponses
+    sealed trait RoundManagerCommands 
+    sealed trait RoundManagerResponses extends GameSessionResponses
     
-    final case class RockPaperScissorsSelection(fromPlayer: ActorRef[RoundManagerResponses], selection: RockPaperScissorsCommands) extends RoundManagerCommands
+    final case class RockPaperScissorsSelection(fromPlayer: ActorRef[GameSessionResponses], selection: RockPaperScissorsCommands) extends RoundManagerCommands
     final case class RockPaperScissorsSelectionRequest(roundManager: ActorRef[RoundManagerCommands]) extends RoundManagerResponses
 
     final case object AllPlayersSelected extends RoundManagerCommands
+    final case object ScoreRecorded extends RoundManagerCommands
 
-    final case class GameStatusUpdate(roundWinner: ActorRef[RoundManagerResponses], roundLoser: ActorRef[RoundManagerResponses]) extends RoundManagerResponses
+    final case class GameStatusUpdate(roundWinner: ActorRef[GameSessionResponses], roundLoser: ActorRef[GameSessionResponses]) extends RoundManagerResponses
     final case object GameStatusUnchanged extends RoundManagerResponses
     
-    def apply(gameSessionManager: ActorRef[RoundManagerResponses], players: Seq[ActorRef[RoundManagerResponses]]): Behavior[RoundManagerCommands] = {
+    def apply(gameSessionManager: ActorRef[RoundManagerResponses], players: Seq[ActorRef[GameSessionResponses]]): Behavior[RoundManagerCommands] = {
         Behaviors.setup { context => new RoundManager(context, gameSessionManager, players)}
     }
 }
 
-class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gameSessionManager: ActorRef[RoundManager.RoundManagerResponses], players: Seq[ActorRef[RoundManager.RoundManagerResponses]]) extends AbstractBehavior(context) {
+class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gameSessionManager: ActorRef[RoundManager.RoundManagerResponses], players: Seq[ActorRef[GameSessionResponses]]) extends AbstractBehavior(context) {
     import RoundManager._
     
     val thisPlayer = players.head
@@ -121,6 +122,10 @@ class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gam
                         gameSessionManager ! GameStatusUnchanged
                 }
                 this
+            case ScoreRecorded => 
+                thisPlayer ! RockPaperScissorsSelectionRequest(context.self)
+                thatPlayer ! RockPaperScissorsSelectionRequest(context.self)
+                this 
         }
     }
 }
