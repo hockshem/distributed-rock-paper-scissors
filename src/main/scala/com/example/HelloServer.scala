@@ -17,7 +17,7 @@ import akka.cluster.typed._
 object ServerMain extends App {
     val defaultConfig = ConfigFactory.load()
     // Set the port that the server should connect to 
-    val serverConfig = ConfigFactory.parseString("akka.remote.artery.canonical.port=5040").withFallback(defaultConfig)
+    val serverConfig = ConfigFactory.parseString("akka.remote.artery.canonical.port=5020").withFallback(defaultConfig)
     val serverSystem = ActorSystem(HelloServer(), "HelloSystem", serverConfig)
 }
 
