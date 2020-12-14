@@ -97,6 +97,9 @@ class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gam
     playerSelectionMap += (thisPlayer.path.toString() -> NotSelected)
     playerSelectionMap += (thatPlayer.path.toString() -> NotSelected)
 
+    thisPlayer ! RockPaperScissorsSelectionRequest(context.self)
+    thatPlayer ! RockPaperScissorsSelectionRequest(context.self)
+
     override def onMessage(msg: RoundManagerCommands): Behavior[RoundManagerCommands] = {
         msg match {
             // When one of the player has made a selection
