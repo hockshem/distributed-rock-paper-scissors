@@ -80,7 +80,7 @@ object RoundManager {
     final case class RockPaperScissorsSelectionRequest(roundManager: ActorRef[RoundManagerCommands]) extends RoundManagerResponses
 
     final case object AllPlayersSelected extends RoundManagerCommands
-    final case object ScoreRecorded extends RoundManagerCommands
+    final case object RestartRound extends RoundManagerCommands
 
     final case class GameStatusUpdate(roundWinner: ActorRef[GameSessionResponses], roundLoser: ActorRef[GameSessionResponses]) extends RoundManagerResponses
     final case object GameStatusUnchanged extends RoundManagerResponses
@@ -122,7 +122,9 @@ class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gam
                         gameSessionManager ! GameStatusUnchanged
                 }
                 this
-            case ScoreRecorded => 
+            case RestartRound => 
+                playerSelectionMap += (thisPlayer.path.toString() -> NotSelected)
+                playerSelectionMap += (thatPlayer.path.toString() -> NotSelected)
                 thisPlayer ! RockPaperScissorsSelectionRequest(context.self)
                 thatPlayer ! RockPaperScissorsSelectionRequest(context.self)
                 this 
