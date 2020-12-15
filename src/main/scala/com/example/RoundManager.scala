@@ -11,7 +11,7 @@ import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 import GameSessionManager.{GameSessionResponses, GameSessionCommands}
 
-
+/* This actor class takes care of the game logic and determines a round winner, then it reports back to the game session manager. */ 
 object RoundManager {
     // Logic specific to Rock-Paper-Scissors
     sealed trait RockPaperScissorsCommands {
@@ -68,20 +68,22 @@ object RoundManager {
     }
 
     // Rock-paper-scissors game states
-    var playerSelectionMap: Map[String, RockPaperScissorsCommands] = Map()
-    val winnerSelectionRule: Map[String, RockPaperScissorsCommands] => RockPaperScissorsResults = (selectionMap) => {
+    private var playerSelectionMap: Map[String, RockPaperScissorsCommands] = Map()
+    private val winnerSelectionRule: Map[String, RockPaperScissorsCommands] => RockPaperScissorsResults = (selectionMap) => {
         selectionMap.head._2.winAgainst(selectionMap.last._2)
     }
 
     sealed trait RoundManagerCommands 
     sealed trait RoundManagerResponses extends GameSessionResponses
-    
+    // RPS Selection fired by the player 
     final case class RockPaperScissorsSelection(fromPlayer: ActorRef[GameSessionResponses], selection: RockPaperScissorsCommands) extends RoundManagerCommands
+    // Request fired to the player to request them to make a selection
     final case class RockPaperScissorsSelectionRequest(roundManager: ActorRef[RoundManagerCommands]) extends RoundManagerResponses
 
     final case object AllPlayersSelected extends RoundManagerCommands
     final case object RestartRound extends RoundManagerCommands
 
+    // When the round winner and loser are both identified
     final case class GameStatusUpdate(roundWinner: ActorRef[GameSessionResponses], roundLoser: ActorRef[GameSessionResponses]) extends RoundManagerResponses
     final case object GameStatusUnchanged extends RoundManagerResponses
     

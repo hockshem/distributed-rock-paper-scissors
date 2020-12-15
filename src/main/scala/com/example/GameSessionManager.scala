@@ -7,25 +7,41 @@ import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.ActorContext
 import RoundManager.{RoundManagerCommands, RoundManagerResponses, GameStatusUnchanged, GameStatusUpdate, RestartRound}
 
+/* This actor class manages a whole game session containing several rounds between two players. It also asks the player's intention to rematch.  
+    Also, this actor class is bound to a specific player, as it is being created and assigned to him during sucessful name registration. The player 
+    then uses this manager to invite another partner for a game.  */
 object GameSessionManager {
     trait GameSessionCommands
+    // When the player has selected a game partner 
     final case class GamePartnerSelection(thatPlayer: ActorRef[GameSessionResponses], thatPlayerName: String) extends GameSessionCommands
+    // When the partner being invited for a game has responded 
     final case class GameInvitationResponse(response: Player.PlayerResponses) extends GameSessionCommands
+
     final case object GameCreated extends GameSessionCommands
+    // Updates fired from the round manager containing the winner and loser
     final case class WrappedRoundUpdates(response: RoundManager.RoundManagerResponses) extends GameSessionCommands
+
     final case object RematchInvitation extends GameSessionCommands
-    final case class RematchInvitationResponse(response: Player.PlayerResponses, fromPlayerName: String) extends GameSessionCommands
+    // Analogous to the game invitation response, except that this message class is no longer specific to the opponent but this player himself 
+    // This is because we need to ask both parties whether to rematch with the current opponent
+    final case class RematchInvitationResponse(response: Player.PlayerResponses, opponent: String) extends GameSessionCommands
     
     trait GameSessionResponses
+    // Game invitation request issued by this class to the invited player to create a game 
     final case class GameInvitationRequest(session: ActorRef[Player.PlayerResponses], fromPlayerName: String) extends GameSessionResponses
+    // Scores update message issued to the player to update their scores 
     final case class AccumulatedScoresUpdate(changeInScore: Int) extends GameSessionResponses 
+    // Message fired to collect the rematch invitation response 
     final case class RematchInvitationRequest(session: ActorRef[GameSessionCommands], opponentName: String) extends GameSessionResponses
 
-    var thatPlayer: Option[ActorRef[GameSessionResponses]] = None
-    var thatPlayerName = ""
-    var roundManager: Option[ActorRef[RoundManagerCommands]] = None
-    var roundCount = 3 
-    var rematchIntentionMap: Map[String, Player.PlayerResponses] = Map()
+    // Private states containing opponent information 
+    private var thatPlayer: Option[ActorRef[GameSessionResponses]] = None
+    private var thatPlayerName = ""
+    // Round-specific information
+    private var roundManager: Option[ActorRef[RoundManagerCommands]] = None
+    private var roundCount = 3 
+    // Game rematch intention states
+    private var rematchIntentionMap: Map[String, Player.PlayerResponses] = Map()
     
     def apply(thisPlayer: ActorRef[GameSessionResponses], thisPlayerName: String): Behavior[GameSessionCommands] = {
         Behaviors.setup { context => 

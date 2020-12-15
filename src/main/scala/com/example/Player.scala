@@ -5,13 +5,12 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.Behavior
 import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.ActorContext
-import GameSessionManager.{GameSessionResponses, GameInvitationRequest, AccumulatedScoresUpdate}
+import GameSessionManager.{GameSessionResponses, GameInvitationRequest, AccumulatedScoresUpdate, RematchInvitationRequest, RematchInvitationResponse}
 import RoundManager.{RockPaperScissorsSelectionRequest, RockPaperScissorsSelection, Rock}
-import _root_.com.example.GameSessionManager.RematchInvitationRequest
-import _root_.com.example.GameSessionManager.RematchInvitationResponse
 
-
+/* Player class that represents a client after succesful name registration. It holds the accumulated scores of each player. */ 
 object Player {
+    // Messages used to accept or reject a game invitation
     sealed trait PlayerResponses
     final case object InvitationAccepted extends PlayerResponses 
     final case object InvitationRejected extends PlayerResponses 
