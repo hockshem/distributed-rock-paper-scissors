@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.Behavior
 import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.ActorContext
-import RoundManager.{RoundManagerCommands, RoundManagerResponses, GameStatusUnchanged, GameStatusUpdate, RestartRound}
+import RoundManager.{RoundManagerCommands, RoundManagerResponses, GameStatusUpdate, RestartRound}
 
 /* This actor class manages a whole game session containing several rounds between two players. It also asks the player's intention to rematch.  
     Also, this actor class is bound to a specific player, as it is being created and assigned to him during sucessful name registration. The player 
@@ -14,8 +14,6 @@ object GameSessionManager {
     trait GameSessionCommands
     // When the player has selected a game partner 
     final case class GamePartnerSelection(thatPlayer: ActorRef[GameSessionResponses], thatPlayerName: String) extends GameSessionCommands
-    // When the partner being invited for a game has responded 
-    final case class GameInvitationResponse(response: Player.PlayerResponses) extends GameSessionCommands
 
     final case object GameCreated extends GameSessionCommands
     // Updates fired from the round manager containing the winner and loser
@@ -24,25 +22,16 @@ object GameSessionManager {
     final case object RematchInvitation extends GameSessionCommands
     // Analogous to the game invitation response, except that this message class is no longer specific to the opponent but this player himself 
     // This is because we need to ask both parties whether to rematch with the current opponent
-    final case class RematchInvitationResponse(response: Player.PlayerResponses, opponent: String) extends GameSessionCommands
+    final case class RematchInvitationResponse(response: Player.PlayerResponses) extends GameSessionCommands
     
     trait GameSessionResponses
     // Game invitation request issued by this class to the invited player to create a game 
-    final case class GameInvitationRequest(session: ActorRef[Player.PlayerResponses], fromPlayerName: String) extends GameSessionResponses
+    final case class GameInvitationRequest(session: ActorRef[GameSessionCommands], fromPlayerName: String) extends GameSessionResponses
     // Scores update message issued to the player to update their scores 
     final case class AccumulatedScoresUpdate(changeInScore: Int) extends GameSessionResponses 
     // Message fired to collect the rematch invitation response 
-    final case class RematchInvitationRequest(session: ActorRef[GameSessionCommands], opponentName: String) extends GameSessionResponses
+    final case class RematchInvitationRequest(opponentName: String) extends GameSessionResponses
 
-    // Private states containing opponent information 
-    private var thatPlayer: Option[ActorRef[GameSessionResponses]] = None
-    private var thatPlayerName = ""
-    // Round-specific information
-    private var roundManager: Option[ActorRef[RoundManagerCommands]] = None
-    private var roundCount = 3 
-    // Game rematch intention states
-    private var rematchIntentionMap: Map[String, Player.PlayerResponses] = Map()
-    
     def apply(thisPlayer: ActorRef[GameSessionResponses], thisPlayerName: String): Behavior[GameSessionCommands] = {
         Behaviors.setup { context => 
             new GameSessionManager(context, thisPlayer, thisPlayerName)
@@ -53,44 +42,47 @@ object GameSessionManager {
 class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCommands], val thisPlayer: ActorRef[GameSessionManager.GameSessionResponses], val thisPlayerName: String) extends AbstractBehavior(context) {
     import GameSessionManager._
 
+    // Private states containing opponent information 
+    private var thatPlayer: Option[ActorRef[GameSessionResponses]] = None
+    private var thatPlayerName = ""
+    // Round-specific information
+    private var roundManager: Option[ActorRef[RoundManagerCommands]] = None
+    private var roundCount = 3 
+    // Game rematch intention states
+    private var rematchIntentionMap: Array[Player.PlayerResponses] = Array()
+
     override def onMessage(msg: GameSessionCommands): Behavior[GameSessionCommands] = {
         msg match {
             case GamePartnerSelection(opponent, name) => 
-                val messageAdapter = context.messageAdapter[Player.PlayerResponses](GameInvitationResponse.apply)
-                opponent ! GameInvitationRequest(messageAdapter, thisPlayerName)
+                opponent ! GameInvitationRequest(context.self, thisPlayerName)
                 thatPlayer = Some(opponent)
                 thatPlayerName = name
                 this
-            case GameInvitationResponse(response) => 
-                response match {
-                    case Player.InvitationAccepted => 
-                        context.self ! GameCreated
-                        this
-                    case Player.InvitationRejected | Player.NotResponded =>
-                        thatPlayer = None
-                        this 
-                }
+            case Player.InvitationAccepted => 
+                context.self ! GameCreated
+                this
+            case Player.InvitationRejected | Player.NotResponded =>
+                thatPlayer = None
+                this 
             case GameCreated => 
                 val roundManagerAdapter = context.messageAdapter[RoundManager.RoundManagerResponses](WrappedRoundUpdates.apply)
                 val players = Array(thisPlayer, thatPlayer.get)
-                roundManager = Some(context.spawn(RoundManager(roundManagerAdapter, players), "Round Manager"))
+                roundManager = Some(context.spawn(RoundManager(roundManagerAdapter, players), "Round-Manager"))
+                roundCount -= 1
                 this
             case WrappedRoundUpdates(response) => 
                 response match {
-                    case GameStatusUnchanged => 
-                        if (roundCount - 1 >= 0) {
-                            roundCount -= 1
-                            roundManager.get ! RestartRound
-                        } else {
-                            context.self ! RematchInvitation
-                        }
-                        this 
-                    case GameStatusUpdate(roundWinner, roundLoser) => 
-                        if (roundCount - 1 >= 0) {
-                            roundCount -= 1
-                            roundManager.get ! RestartRound
+                    case GameStatusUpdate(roundWinner, roundLoser, tie) => 
+                        if (tie) { 
+                            roundWinner ! AccumulatedScoresUpdate(0)
+                            roundLoser ! AccumulatedScoresUpdate(0)
+                         } else {
                             roundWinner ! AccumulatedScoresUpdate(1)
                             roundLoser ! AccumulatedScoresUpdate(-1)
+                        }
+                        if (roundCount - 1 >= 0) {
+                            roundCount -= 1    
+                            roundManager.get ! RestartRound
                         } else {
                             context.self ! RematchInvitation
                         }
@@ -99,21 +91,25 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                         Behaviors.unhandled
                 }
             case RematchInvitation => 
-                thisPlayer ! RematchInvitationRequest(context.self, thatPlayerName)
-                thatPlayer.get ! RematchInvitationRequest(context.self, thisPlayerName)
+                thisPlayer ! RematchInvitationRequest(thatPlayerName)
+                thatPlayer.get ! RematchInvitationRequest(thisPlayerName)
                 this
-            case RematchInvitationResponse(response, fromPlayer) => 
-                rematchIntentionMap += (fromPlayer -> response)
+            case RematchInvitationResponse(response) => 
+                context.log.info("Got a rematch invitation response! " + response.toString())
+                rematchIntentionMap = rematchIntentionMap.appended(response)
                 if (rematchIntentionMap.size == 2) {
-                    if (rematchIntentionMap.valuesIterator.contains(Player.InvitationRejected)) { 
+                    context.log.info("Got both responses!")
+                    if (rematchIntentionMap.contains(Player.InvitationRejected)) { 
+                        context.log.info("One of the player rejected...")
                         thatPlayer = None 
                         thatPlayerName = ""
                         roundManager = None
                     } else {        
+                        context.log.info("Both players accepted to rematch...Restarting the game...")
                         roundManager.get ! RestartRound
                     }
                     roundCount = 3 
-                    rematchIntentionMap = Map()
+                    rematchIntentionMap = Array()
                 }
                 this
         }   

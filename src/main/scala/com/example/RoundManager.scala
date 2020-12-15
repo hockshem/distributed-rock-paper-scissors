@@ -14,63 +14,50 @@ import GameSessionManager.{GameSessionResponses, GameSessionCommands}
 /* This actor class takes care of the game logic and determines a round winner, then it reports back to the game session manager. */ 
 object RoundManager {
     // Logic specific to Rock-Paper-Scissors
-    sealed trait RockPaperScissorsCommands {
-        def winAgainst(opponentSelection: RockPaperScissorsCommands): RockPaperScissorsResults
-    }
 
     sealed trait RockPaperScissorsResults
     final case object Lose extends RockPaperScissorsResults
     final case object Victory extends RockPaperScissorsResults
     final case object Tie extends RockPaperScissorsResults
 
-    final case object Rock extends RockPaperScissorsCommands {
-        def winAgainst(opponentSelection: RockPaperScissorsCommands): RockPaperScissorsResults = {
-            opponentSelection match {
-                case Rock => Tie
-                case Paper => Lose
-                case Scissors => Victory
-                case NotSelected => Victory
-            }
-        }
-    }
-    
-    final case object Paper extends RockPaperScissorsCommands {
-        def winAgainst(opponentSelection: RockPaperScissorsCommands): RockPaperScissorsResults = {
-            opponentSelection match {
-                case Rock => Victory
-                case Paper => Tie
-                case Scissors => Lose
-                case NotSelected => Victory
-            }
-        }
-    }
+    sealed trait RockPaperScissorsCommands
+    final case object Rock extends RockPaperScissorsCommands
+    final case object Paper extends RockPaperScissorsCommands
+    final case object Scissors extends RockPaperScissorsCommands
+    final case object NotSelected extends RockPaperScissorsCommands
 
-    final case object Scissors extends RockPaperScissorsCommands {
-        def winAgainst(opponentSelection: RockPaperScissorsCommands): RockPaperScissorsResults = {
-            opponentSelection match {
-                case Rock => Lose
-                case Paper => Victory
-                case Scissors => Tie
-                case NotSelected => Victory
-            }
+    private def selectRPSWinner(first: RockPaperScissorsCommands, second: RockPaperScissorsCommands): RockPaperScissorsResults = {
+        first match {
+            case Paper => 
+                second match {
+                    case Rock | NotSelected => 
+                        Victory
+                    case Paper => 
+                        Tie
+                    case Scissors => 
+                        Lose
+                }
+            case Rock => 
+                second match {
+                    case Paper => 
+                        Lose 
+                    case Scissors | NotSelected => 
+                        Victory 
+                    case Rock => 
+                        Tie
+                }
+            case Scissors => 
+                second match {
+                    case Paper | NotSelected => 
+                        Victory
+                    case Scissors => 
+                        Tie
+                    case Rock => 
+                        Lose 
+                }
+            case NotSelected => 
+                Lose 
         }
-    }
-
-    final case object NotSelected extends RockPaperScissorsCommands {
-        def winAgainst(opponentSelection: RockPaperScissorsCommands): RockPaperScissorsResults = {
-            opponentSelection match {
-                case Rock => Lose
-                case Paper => Lose
-                case Scissors => Lose
-                case NotSelected => Lose
-            }
-        }
-    }
-
-    // Rock-paper-scissors game states
-    private var playerSelectionMap: Map[String, RockPaperScissorsCommands] = Map()
-    private val winnerSelectionRule: Map[String, RockPaperScissorsCommands] => RockPaperScissorsResults = (selectionMap) => {
-        selectionMap.head._2.winAgainst(selectionMap.last._2)
     }
 
     sealed trait RoundManagerCommands 
@@ -84,8 +71,7 @@ object RoundManager {
     final case object RestartRound extends RoundManagerCommands
 
     // When the round winner and loser are both identified
-    final case class GameStatusUpdate(roundWinner: ActorRef[GameSessionResponses], roundLoser: ActorRef[GameSessionResponses]) extends RoundManagerResponses
-    final case object GameStatusUnchanged extends RoundManagerResponses
+    final case class GameStatusUpdate(roundWinner: ActorRef[GameSessionResponses], roundLoser: ActorRef[GameSessionResponses], tie: Boolean) extends RoundManagerResponses
     
     def apply(gameSessionManager: ActorRef[RoundManagerResponses], players: Seq[ActorRef[GameSessionResponses]]): Behavior[RoundManagerCommands] = {
         Behaviors.setup { context => new RoundManager(context, gameSessionManager, players)}
@@ -94,6 +80,12 @@ object RoundManager {
 
 class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gameSessionManager: ActorRef[RoundManager.RoundManagerResponses], players: Seq[ActorRef[GameSessionResponses]]) extends AbstractBehavior(context) {
     import RoundManager._
+
+    // Rock-paper-scissors game states
+    private var playerSelectionMap: Map[String, RockPaperScissorsCommands] = Map()
+    private val winnerSelectionRule: Map[String, RockPaperScissorsCommands] => RockPaperScissorsResults = (selectionMap) => {
+        selectRPSWinner(selectionMap.head._2, selectionMap.last._2)
+    }
     
     val thisPlayer = players.head
     val thatPlayer = players.last
@@ -117,11 +109,11 @@ class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gam
                 val result = winnerSelectionRule(playerSelectionMap)
                 result match {
                     case Lose => 
-                        gameSessionManager ! GameStatusUpdate(thatPlayer, thisPlayer)
+                        gameSessionManager ! GameStatusUpdate(thatPlayer, thisPlayer, false)
                     case Victory => 
-                        gameSessionManager ! GameStatusUpdate(thisPlayer, thatPlayer)
+                        gameSessionManager ! GameStatusUpdate(thisPlayer, thatPlayer, false)
                     case Tie => 
-                        gameSessionManager ! GameStatusUnchanged
+                        gameSessionManager ! GameStatusUpdate(thisPlayer, thatPlayer, true)
                 }
                 this
             case RestartRound => 
