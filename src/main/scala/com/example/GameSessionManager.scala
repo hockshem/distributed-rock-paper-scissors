@@ -26,11 +26,13 @@ object GameSessionManager {
     
     trait GameSessionResponses
     // Game invitation request issued by this class to the invited player to create a game 
-    final case class GameInvitationRequest(session: ActorRef[GameSessionCommands], fromPlayerName: String) extends GameSessionResponses
+    final case class GameInvitationRequest(fromPlayerName: String) extends GameSessionResponses
     // Scores update message issued to the player to update their scores 
     final case class AccumulatedScoresUpdate(changeInScore: Int) extends GameSessionResponses 
     // Message fired to collect the rematch invitation response 
     final case class RematchInvitationRequest(opponentName: String) extends GameSessionResponses
+    final case class BindGameSession(sesion: ActorRef[GameSessionManager.GameSessionCommands]) extends GameSessionResponses
+    final case object UnbindGameSession extends GameSessionResponses
 
     def apply(thisPlayer: ActorRef[GameSessionResponses], thisPlayerName: String): Behavior[GameSessionCommands] = {
         Behaviors.setup { context => 
@@ -54,7 +56,9 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
     override def onMessage(msg: GameSessionCommands): Behavior[GameSessionCommands] = {
         msg match {
             case GamePartnerSelection(opponent, name) => 
-                opponent ! GameInvitationRequest(context.self, thisPlayerName)
+                thisPlayer ! BindGameSession(context.self)
+                opponent ! BindGameSession(context.self)
+                opponent ! GameInvitationRequest(thisPlayerName)
                 thatPlayer = Some(opponent)
                 thatPlayerName = name
                 this
@@ -62,7 +66,9 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                 context.self ! GameCreated
                 this
             case Player.InvitationRejected | Player.NotResponded =>
+                thatPlayer.get ! UnbindGameSession
                 thatPlayer = None
+                thatPlayerName = ""
                 this 
             case GameCreated => 
                 val roundManagerAdapter = context.messageAdapter[RoundManager.RoundManagerResponses](WrappedRoundUpdates.apply)

@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.Behavior
 import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.ActorContext
-import GameSessionManager.{GameSessionResponses, GameInvitationRequest, AccumulatedScoresUpdate, RematchInvitationRequest, RematchInvitationResponse}
+import GameSessionManager.{GameSessionResponses, GameInvitationRequest, AccumulatedScoresUpdate, RematchInvitationRequest, RematchInvitationResponse, BindGameSession, UnbindGameSession}
 import RoundManager.{RockPaperScissorsSelectionRequest, RockPaperScissorsSelection, RockPaperScissorsCommands, Rock, Paper, Scissors, NotSelected}
 import _root_.com.example.GameSessionManager.GameSessionCommands
 
@@ -38,8 +38,13 @@ class Player(context: ActorContext[GameSessionResponses], val name: String, val 
 
     override def onMessage(msg: GameSessionResponses): Behavior[GameSessionResponses] = { 
         msg match {
-            case GameInvitationRequest(session, fromPlayerName) =>
+            case BindGameSession(session) =>
                 gameSession = Some(session)
+                this
+            case UnbindGameSession => 
+                gameSession = None
+                this 
+            case GameInvitationRequest(fromPlayerName) =>
                 clientRef ! GameClient.ReceivedGameInvitation(fromPlayerName)
                 this
             case ClientGameInvitationResponse(agreed) => 
