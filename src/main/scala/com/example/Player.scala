@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.Behavior
 import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.ActorContext
-import GameSessionManager.{GameSessionResponses, GameInvitationRequest, AccumulatedScoresUpdate, RematchInvitationRequest, RematchInvitationResponse, BindGameSession, UnbindGameSession}
+import GameSessionManager.{GameSessionResponses, GameInvitationRequest, AccumulatedScoresUpdate, RematchInvitationRequest, RematchInvitationResponse, BindGameSession, UnbindGameSession, MatchmakingFailed}
 import RoundManager.{RockPaperScissorsSelectionRequest, RockPaperScissorsSelection, RockPaperScissorsCommands, Rock, Paper, Scissors, NotSelected}
 import _root_.com.example.GameSessionManager.GameSessionCommands
 
@@ -61,7 +61,6 @@ class Player(context: ActorContext[GameSessionResponses], val name: String, val 
                 this
             case ClientRPSSelection(selection) => 
                 var rpsSelection: RoundManager.RockPaperScissorsCommands = RoundManager.NotSelected
-
                 selection match {
                     case "1" => rpsSelection = Rock
                     case "2" => rpsSelection = Paper
@@ -84,6 +83,10 @@ class Player(context: ActorContext[GameSessionResponses], val name: String, val 
                 this
             case RematchInvitationRequest(opponentName) => 
                 clientRef ! GameClient.ReceivedRematchInvitation(opponentName)
+                this
+            case MatchmakingFailed =>
+                clientRef ! GameClient.BecomeIdle
+                roundManager = None
                 this
         }
     }

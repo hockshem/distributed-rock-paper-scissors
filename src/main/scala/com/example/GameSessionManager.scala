@@ -33,6 +33,7 @@ object GameSessionManager {
     final case class RematchInvitationRequest(opponentName: String) extends GameSessionResponses
     final case class BindGameSession(sesion: ActorRef[GameSessionManager.GameSessionCommands]) extends GameSessionResponses
     final case object UnbindGameSession extends GameSessionResponses
+    final case object MatchmakingFailed extends GameSessionResponses
 
     def apply(thisPlayer: ActorRef[GameSessionResponses], thisPlayerName: String): Behavior[GameSessionCommands] = {
         Behaviors.setup { context => 
@@ -69,6 +70,7 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                 thatPlayer.get ! UnbindGameSession
                 thatPlayer = None
                 thatPlayerName = ""
+                thisPlayer ! MatchmakingFailed
                 this 
             case GameCreated => 
                 val roundManagerAdapter = context.messageAdapter[RoundManager.RoundManagerResponses](WrappedRoundUpdates.apply)
@@ -107,8 +109,11 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                     context.log.info("Got both responses!")
                     if (rematchIntentionMap.contains(Player.InvitationRejected)) { 
                         context.log.info("One of the player rejected...")
+                        thisPlayer ! MatchmakingFailed
+                        thatPlayer.get ! MatchmakingFailed
                         thatPlayer = None 
                         thatPlayerName = ""
+                        context.stop(roundManager.get)
                         roundManager = None
                     } else {        
                         context.log.info("Both players accepted to rematch...Restarting the game...")

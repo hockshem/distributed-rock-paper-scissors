@@ -35,16 +35,11 @@ object GameClient {
     final case class ReceivedGameInvitation(fromPlayerName: String) extends Command
     final case class ReceivedRematchInvitation(opponentName: String) extends Command
     final case object MakeRPSSelection extends Command
+    final case object BecomeIdle extends Command
 
     final case class RoundLost(score: Int) extends Command
     final case class RoundVictory(score: Int) extends Command 
     final case class RoundTie(score: Int) extends Command
-
-    private var player: Option[ActorRef[GameSessionManager.GameSessionResponses]] = None 
-    private var playerName: String = ""
-    private var sessionServer: Option[ActorRef[SessionManager.SessionRequests]] = None
-    private var gameSessionServer: Option[ActorRef[GameSessionManager.GameSessionCommands]] = None 
-    private var onlineMembers: Map[String, ActorRef[GameSessionManager.GameSessionResponses]] = Map()
 
     // Factory method for the client actor behavior 
     def apply(): Behavior[Command] = Behaviors.setup { context => 
@@ -53,6 +48,15 @@ object GameClient {
 
 class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBehavior(context) {
     import GameClient._
+
+    private var player: Option[ActorRef[GameSessionManager.GameSessionResponses]] = None 
+    private var playerName: String = ""
+    private var sessionServer: Option[ActorRef[SessionManager.SessionRequests]] = None
+    private var gameSessionServer: Option[ActorRef[GameSessionManager.GameSessionCommands]] = None 
+    private var onlineMembers: Map[String, ActorRef[GameSessionManager.GameSessionResponses]] = Map()
+
+    private var idle: Boolean = true
+
     override def onMessage(msg: Command): Behavior[Command] = {
         msg match {
             case ServerLookup => 
@@ -60,10 +64,10 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
                 val adapter = context.messageAdapter[Receptionist.Listing](ListingResponse)
                 context.system.receptionist ! Receptionist.Subscribe(GameServer.ServerKey, adapter)
                 this
-            case ServerResponse(message, sessionServer) =>
+            case ServerResponse(message, server) =>
                 context.log.info("Got the session server from the server: " + message)
-                context.log.info("Session server path: " + sessionServer.path)
-                GameClient.sessionServer = Some(sessionServer)
+                context.log.info("Session server path: " + server.path)
+                sessionServer = Some(server)
                 context.self ! ClientNameRegistration
                 this
             case ListingResponse(GameServer.ServerKey.Listing(listing)) =>
@@ -85,21 +89,26 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
             case OnlineMembersListing(players) => 
                 context.log.info("Member list updated.")
                 onlineMembers = players.removed(playerName)
+                if (idle && onlineMembers.size >= 1) { showAvailableOpponents() }
                 this
             case NewPlayerAcknowledgement(player, playerName, gameSessionManager, players) => 
                 context.log.info(s"Successfully registered with name $playerName!")
-                GameClient.player = Some(player)
-                GameClient.playerName = playerName
+                this.player = Some(player)
+                this.playerName = playerName
                 gameSessionServer = Some(gameSessionManager)
                 onlineMembers = players.removed(playerName)
                 presentGameMenu()
-                // showAvailableOpponents(gameSessionManager, onlineMembers, false)
                 this
             case ReceivedGameInvitation(from) =>
                 onGameInvitation(s"Received game invitation from $from!\nDo you want to play a game with him/her? (Y/N)")
                 this
             case ReceivedRematchInvitation(opponentName) => 
                 onRematchInvitation(s"Do you want to rematch with $opponentName? (Y/N)")
+                this
+            case BecomeIdle =>
+                context.log.info("It seems like your opponent does not want to play the game...")
+                idle = true
+                presentGameMenu()
                 this
             case MakeRPSSelection => 
                 onRPSSelectionRequest()
@@ -147,8 +156,11 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
         context.log.info(displayMessage)
         val selection = StdIn.readLine()
         selection.toUpperCase match {
-            case "Y" => player.get ! Player.ClientGameInvitationResponse(true)
-            case _ => player.get ! Player.ClientGameInvitationResponse(false)
+            case "Y" => 
+                idle = false
+                player.get ! Player.ClientGameInvitationResponse(true) 
+            case _ => 
+                player.get ! Player.ClientGameInvitationResponse(false)
         }
     }
 
@@ -157,7 +169,7 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
         val selection = StdIn.readLine()
         selection.toUpperCase match {
             case "Y" => player.get ! Player.ClientRematchInvitationResponse(true)
-            case _ => player.get ! Player.ClientRematchInvitationResponse(false)
+            case _ => player.get ! Player.ClientRematchInvitationResponse(false) 
         }
     }
 
@@ -174,10 +186,14 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
             context.log.info(s"${memberArray.indexOf(m)}.$m")
         }
         // TODO: might be in deadlock 
-        context.log.info("Enter the player number to play the game with: ")
-        val choice = StdIn.readLine().toInt
-        val selectedName = memberArray(choice)
-        gameSessionServer.get ! GameSessionManager.GamePartnerSelection(onlineMembers(selectedName), selectedName)
-        context.log.info("Invitation sent! Waiting for the player to accept...")
+        context.log.info("Enter the player number to play the game with: (-1 to quit)")
+        val choice = StdIn.readLine()
+        if (choice != "-1") {
+            val index = choice.toInt
+            val selectedName = memberArray(index)
+            gameSessionServer.get ! GameSessionManager.GamePartnerSelection(onlineMembers(selectedName), selectedName)
+            idle = false
+            context.log.info("Invitation sent! Waiting for the player to accept...")
+        }
     }
 }
