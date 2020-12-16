@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.Behavior
 import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.ActorContext
-import GameSessionManager.{GameSessionResponses, GameInvitationRequest, AccumulatedScoresUpdate, RematchInvitationRequest, RematchInvitationResponse, BindGameSession, UnbindGameSession, MatchmakingFailed}
+import GameSessionManager._
 import RoundManager.{RockPaperScissorsSelectionRequest, RockPaperScissorsSelection, RockPaperScissorsCommands, Rock, Paper, Scissors, NotSelected}
 import _root_.com.example.GameSessionManager.GameSessionCommands
 
@@ -69,17 +69,31 @@ class Player(context: ActorContext[GameSessionResponses], val name: String, val 
                 }
                 roundManager.get ! RockPaperScissorsSelection(context.self, rpsSelection)
                 this
-            case AccumulatedScoresUpdate(change) => 
-                if (accumulatedScores + change >= 0) {
-                    accumulatedScores +=  change
-                } else accumulatedScores = 0
-                
-                if (change > 0) { 
-                    clientRef ! GameClient.RoundVictory(accumulatedScores)
-                } else if (change < 0 ) {
-                    clientRef ! GameClient.RoundLost(accumulatedScores)
-                } else { clientRef ! GameClient.RoundTie(accumulatedScores) } 
-
+            case AccumulatedScoresUpdate(change, tie) => 
+                if (tie) {
+                    clientRef ! GameClient.RoundTie(accumulatedScores)
+                } else {
+                    if (accumulatedScores + change >= 0) {
+                        accumulatedScores +=  change
+                    } else {
+                        accumulatedScores = 0
+                    }
+                    if (change == 1) { 
+                        clientRef ! GameClient.RoundVictory(accumulatedScores)
+                    }
+                    else {
+                        clientRef ! GameClient.RoundLost(accumulatedScores)
+                    }
+                }
+                this
+            case GameSessionLost(totalScore) => 
+                clientRef ! GameClient.GameLost(totalScore)
+                this 
+            case GameSessionVictory(totalScore) => 
+                clientRef ! GameClient.GameVictory(totalScore)
+                this 
+            case GameSessionTie(totalScore) => 
+                clientRef ! GameClient.GameTie(totalScore)
                 this
             case RematchInvitationRequest(opponentName) => 
                 clientRef ! GameClient.ReceivedRematchInvitation(opponentName)

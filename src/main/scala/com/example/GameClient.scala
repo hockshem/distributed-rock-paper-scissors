@@ -40,6 +40,9 @@ object GameClient {
     final case class RoundLost(score: Int) extends Command
     final case class RoundVictory(score: Int) extends Command 
     final case class RoundTie(score: Int) extends Command
+    final case class GameLost(score: Int) extends Command
+    final case class GameVictory(score: Int) extends Command
+    final case class GameTie(score: Int) extends Command
 
     // Factory method for the client actor behavior 
     def apply(): Behavior[Command] = Behaviors.setup { context => 
@@ -122,7 +125,28 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
             case RoundTie(score) => 
                 onRoundTie(score)
                 this
+            case GameLost(score) => 
+                onGameLost(score)
+                this 
+            case GameVictory(score) => 
+                onGameVictory(score)
+                this 
+            case GameTie(score) => 
+                onGameTie(score)
+                this 
         }
+    }
+
+    private def onGameLost(score: Int) = {
+        context.log.info(s"You have lost the game. Total score earned in this game: $score")
+    }
+
+    private def onGameVictory(score: Int) = {
+        context.log.info(s"You have won the game! Total score earned in this game: $score")
+    }
+
+    private def onGameTie(score: Int) = {
+        context.log.info(s"No one wins the game!. Total score earned in this game: $score")
     }
 
     private def onRoundLost(score: Int) = {
@@ -186,7 +210,7 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
             context.log.info(s"${memberArray.indexOf(m)}.$m")
         }
         // TODO: might be in deadlock 
-        context.log.info("Enter the player number to play the game with: (-1 to quit)")
+        context.log.info("Enter the player number to play the game with: (-1 if there is no one that you wish to play the game with)")
         val choice = StdIn.readLine()
         if (choice != "-1") {
             val index = choice.toInt

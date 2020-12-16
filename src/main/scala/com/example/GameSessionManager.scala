@@ -28,7 +28,10 @@ object GameSessionManager {
     // Game invitation request issued by this class to the invited player to create a game 
     final case class GameInvitationRequest(fromPlayerName: String) extends GameSessionResponses
     // Scores update message issued to the player to update their scores 
-    final case class AccumulatedScoresUpdate(changeInScore: Int) extends GameSessionResponses 
+    final case class AccumulatedScoresUpdate(changeInScore: Int, tie: Boolean) extends GameSessionResponses 
+    final case class GameSessionVictory(totalScore: Int) extends GameSessionResponses
+    final case class GameSessionLost(totalScore: Int) extends GameSessionResponses
+    final case class GameSessionTie(totalScore: Int) extends GameSessionResponses
     // Message fired to collect the rematch invitation response 
     final case class RematchInvitationRequest(opponentName: String) extends GameSessionResponses
     final case class BindGameSession(sesion: ActorRef[GameSessionManager.GameSessionCommands]) extends GameSessionResponses
@@ -52,6 +55,7 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
     private var roundManager: Option[ActorRef[RoundManagerCommands]] = None
     private var roundCount = 3 
     // Game rematch intention states
+    private var gameSessionRecord: Array[Int] = Array(0, 0)
     private var rematchIntentionMap: Array[Player.PlayerResponses] = Array()
 
     override def onMessage(msg: GameSessionCommands): Behavior[GameSessionCommands] = {
@@ -81,18 +85,31 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
             case WrappedRoundUpdates(response) => 
                 response match {
                     case GameStatusUpdate(roundWinner, roundLoser, tie) => 
-                        if (tie) { 
-                            roundWinner ! AccumulatedScoresUpdate(0)
-                            roundLoser ! AccumulatedScoresUpdate(0)
-                         } else {
-                            roundWinner ! AccumulatedScoresUpdate(1)
-                            roundLoser ! AccumulatedScoresUpdate(-1)
+                        if (!tie) {
+                            if (roundWinner == thisPlayer) {
+                                gameSessionRecord(0) += 1
+                            } else {
+                                gameSessionRecord(1) += 1
+                            }
                         }
+                        roundWinner ! AccumulatedScoresUpdate(1, tie)
+                        roundLoser ! AccumulatedScoresUpdate(0, tie)
                         if (roundCount - 1 >= 0) {
                             roundCount -= 1    
                             roundManager.get ! RestartRound
                         } else {
+                            if (gameSessionRecord(0) == gameSessionRecord(1)) {
+                                thisPlayer ! GameSessionTie(gameSessionRecord(0))
+                                thatPlayer.get ! GameSessionTie(gameSessionRecord(1))
+                            } else if (gameSessionRecord(0) > gameSessionRecord(1)) {
+                                thisPlayer ! GameSessionVictory(gameSessionRecord(0))
+                                thatPlayer.get ! GameSessionLost(gameSessionRecord(1))
+                            } else if (gameSessionRecord(1) > gameSessionRecord(0)) {
+                                thisPlayer ! GameSessionLost(gameSessionRecord(0))
+                                thatPlayer.get ! GameSessionVictory(gameSessionRecord(1))
+                            }
                             context.self ! RematchInvitation
+                            gameSessionRecord = Array(0, 0)
                         }
                         this
                     case _ => 
