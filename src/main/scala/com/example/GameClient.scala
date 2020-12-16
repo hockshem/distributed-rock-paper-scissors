@@ -34,7 +34,7 @@ object GameClient {
     final case object ClientNameRegistration extends Command
     final case class ReceivedGameInvitation(fromPlayerName: String) extends Command
     final case class ReceivedRematchInvitation(opponentName: String) extends Command
-    final case object MakeRPSSelection extends Command
+    final case class  MakeRPSSelection(roundCount: Int) extends Command
     final case object BecomeIdle extends Command
 
     final case class RoundLost(score: Int) extends Command
@@ -113,8 +113,8 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
                 idle = true
                 presentGameMenu()
                 this
-            case MakeRPSSelection => 
-                onRPSSelectionRequest()
+            case MakeRPSSelection(count) => 
+                onRPSSelectionRequest(count)
                 this
             case RoundLost(score) => 
                 onRoundLost(score)
@@ -197,8 +197,8 @@ class GameClient(context: ActorContext[GameClient.Command]) extends AbstractBeha
         }
     }
 
-    private def onRPSSelectionRequest() = {
-        context.log.info(s"Please make a selection:\n1. Rock\n2. Paper\n3. Scissors\n")
+    private def onRPSSelectionRequest(count: Int) = {
+        context.log.info(s"Remaining rounds: $count\nPlease make a selection:\n1. Rock\n2. Paper\n3. Scissors\n")
         val selection = StdIn.readLine()
         player.get ! Player.ClientRPSSelection(selection)
     }

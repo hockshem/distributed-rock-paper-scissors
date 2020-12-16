@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.Behavior
 import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.ActorContext
-import RoundManager.{RoundManagerCommands, RoundManagerResponses, GameStatusUpdate, RestartRound}
+import RoundManager.{RoundManagerCommands, RoundManagerResponses, GameStatusUpdate, StartRound}
 
 /* This actor class manages a whole game session containing several rounds between two players. It also asks the player's intention to rematch.  
     Also, this actor class is bound to a specific player, as it is being created and assigned to him during sucessful name registration. The player 
@@ -80,6 +80,7 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                 val roundManagerAdapter = context.messageAdapter[RoundManager.RoundManagerResponses](WrappedRoundUpdates.apply)
                 val players = Array(thisPlayer, thatPlayer.get)
                 roundManager = Some(context.spawn(RoundManager(roundManagerAdapter, players), "Round-Manager"))
+                roundManager.get ! StartRound(roundCount)
                 roundCount -= 1
                 this
             case WrappedRoundUpdates(response) => 
@@ -95,8 +96,8 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                         roundWinner ! AccumulatedScoresUpdate(1, tie)
                         roundLoser ! AccumulatedScoresUpdate(0, tie)
                         if (roundCount - 1 >= 0) {
+                            roundManager.get ! StartRound(roundCount)
                             roundCount -= 1    
-                            roundManager.get ! RestartRound
                         } else {
                             if (gameSessionRecord(0) == gameSessionRecord(1)) {
                                 thisPlayer ! GameSessionTie(gameSessionRecord(0))
@@ -109,6 +110,7 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                                 thatPlayer.get ! GameSessionVictory(gameSessionRecord(1))
                             }
                             context.self ! RematchInvitation
+                            roundCount = 3
                             gameSessionRecord = Array(0, 0)
                         }
                         this
@@ -123,6 +125,7 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                 context.log.info("Got a rematch invitation response! " + response.toString())
                 rematchIntentionMap = rematchIntentionMap.appended(response)
                 if (rematchIntentionMap.size == 2) {
+                    
                     context.log.info("Got both responses!")
                     if (rematchIntentionMap.contains(Player.InvitationRejected)) { 
                         context.log.info("One of the player rejected...")
@@ -134,9 +137,9 @@ class GameSessionManager(context: ActorContext[GameSessionManager.GameSessionCom
                         roundManager = None
                     } else {        
                         context.log.info("Both players accepted to rematch...Restarting the game...")
-                        roundManager.get ! RestartRound
+                        roundManager.get ! StartRound(roundCount)
+                        roundCount -= 1
                     }
-                    roundCount = 3 
                     rematchIntentionMap = Array()
                 }
                 this

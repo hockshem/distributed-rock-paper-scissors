@@ -65,10 +65,10 @@ object RoundManager {
     // RPS Selection fired by the player 
     final case class RockPaperScissorsSelection(fromPlayer: ActorRef[GameSessionResponses], selection: RockPaperScissorsCommands) extends RoundManagerCommands
     // Request fired to the player to request them to make a selection
-    final case class RockPaperScissorsSelectionRequest(roundManager: ActorRef[RoundManagerCommands]) extends RoundManagerResponses
+    final case class RockPaperScissorsSelectionRequest(roundManager: ActorRef[RoundManagerCommands], remainingRound: Int) extends RoundManagerResponses
 
     final case object AllPlayersSelected extends RoundManagerCommands
-    final case object RestartRound extends RoundManagerCommands
+    final case class StartRound(remainingRound: Int) extends RoundManagerCommands
 
     // When the round winner and loser are both identified
     final case class GameStatusUpdate(roundWinner: ActorRef[GameSessionResponses], roundLoser: ActorRef[GameSessionResponses], tie: Boolean) extends RoundManagerResponses
@@ -89,11 +89,6 @@ class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gam
     
     val thisPlayer = players.head
     val thatPlayer = players.last
-    playerSelectionMap += (thisPlayer.path.toString() -> NotSelected)
-    playerSelectionMap += (thatPlayer.path.toString() -> NotSelected)
-
-    thisPlayer ! RockPaperScissorsSelectionRequest(context.self)
-    thatPlayer ! RockPaperScissorsSelectionRequest(context.self)
 
     override def onMessage(msg: RoundManagerCommands): Behavior[RoundManagerCommands] = {
         msg match {
@@ -116,11 +111,11 @@ class RoundManager(context: ActorContext[RoundManager.RoundManagerCommands], gam
                         gameSessionManager ! GameStatusUpdate(thisPlayer, thatPlayer, true)
                 }
                 this
-            case RestartRound => 
+            case StartRound(remainingRound) => 
                 playerSelectionMap += (thisPlayer.path.toString() -> NotSelected)
                 playerSelectionMap += (thatPlayer.path.toString() -> NotSelected)
-                thisPlayer ! RockPaperScissorsSelectionRequest(context.self)
-                thatPlayer ! RockPaperScissorsSelectionRequest(context.self)
+                thisPlayer ! RockPaperScissorsSelectionRequest(context.self, remainingRound)
+                thatPlayer ! RockPaperScissorsSelectionRequest(context.self, remainingRound)
                 this 
         }
     }

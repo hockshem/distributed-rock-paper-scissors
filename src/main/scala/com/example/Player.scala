@@ -55,9 +55,9 @@ class Player(context: ActorContext[GameSessionResponses], val name: String, val 
             case ClientRematchInvitationResponse(agreed) => 
                 if (agreed) { gameSession.get ! RematchInvitationResponse(InvitationAccepted) } else { gameSession.get ! RematchInvitationResponse(InvitationRejected) }
                 this 
-            case RockPaperScissorsSelectionRequest(roundManager) => 
+            case RockPaperScissorsSelectionRequest(roundManager, roundCount) => 
                 this.roundManager = Some(roundManager)
-                clientRef ! GameClient.MakeRPSSelection
+                clientRef ! GameClient.MakeRPSSelection(roundCount)
                 this
             case ClientRPSSelection(selection) => 
                 var rpsSelection: RoundManager.RockPaperScissorsCommands = RoundManager.NotSelected
